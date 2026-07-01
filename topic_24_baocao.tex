@@ -1,0 +1,430 @@
+\documentclass[12pt,a4paper]{article}
+
+% ===================== GÓI LỆNH =====================
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+
+\renewcommand{\contentsname}{Mục lục}
+
+\geometry{a4paper, top=2.5cm, bottom=2.5cm, left=3cm, right=2cm}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=blue,
+    urlcolor=blue,
+    pdftitle={Kien truc bo nho phi kha bien dua tren ReRAM/PCM va ung dung trong SCM}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\small Công nghệ máy tính hiện đại -- IT2004.CH201}
+\fancyhead[L]{\small Bộ nhớ phi khả biến ReRAM/PCM và SCM}
+\fancyfoot[C]{\thepage}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\begin{document}
+
+% ===================== TRANG BÌA =====================
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+
+\vspace*{10pt}
+
+\includegraphics[height=3cm]{logo-uit.png}
+
+\vspace{20pt}
+
+{\Large\textbf{ĐỒ ÁN MÔN HỌC}}
+
+\vspace{10pt}
+
+{\large Công nghệ máy tính hiện đại -- IT2004.CH201}
+
+\vspace{40pt}
+
+{\large\textbf{KIẾN TRÚC BỘ NHỚ PHI KHẢ BIẾN DỰA TRÊN ReRAM/PCM \\[6pt]
+VÀ ỨNG DỤNG TRONG STORAGE-CLASS MEMORY (SCM)}}
+
+\vspace{40pt}
+
+\begin{tabular}{ll}
+\textbf{Giảng viên hướng dẫn:} & TS. Nguyễn Mạnh Thảo \\[12pt]
+\textbf{Sinh viên thực hiện:} & 250202039 -- Bùi Tấn Hưng \\
+ & 250202033 -- Nguyễn Tấn Đạt \\
+ & 250202011 -- Đinh Hoàng Lộc \\
+ & 250202054 -- Dương Hiển Thế \\
+ & 250202014 -- Phan Văn Minh \\
+\end{tabular}
+
+\vfill
+
+{ngày 1 tháng 7 năm 2026}
+
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ======================================================================
+\section{Đặt vấn đề}
+% ======================================================================
+
+Phân cấp bộ nhớ của một hệ thống máy tính hiện đại được xây dựng quanh một sự đánh đổi cố định: bộ nhớ càng gần CPU thì càng nhanh nhưng càng đắt, càng dễ mất dữ liệu, và càng khó thu nhỏ. SRAM dùng cho cache có tốc độ truy cập khoảng 5 ns nhưng cấu trúc 6 transistor mỗi ô khiến mật độ thấp và giá thành cao. DRAM dùng cho bộ nhớ chính đạt mật độ cao hơn nhiều với cấu trúc một transistor, một tụ điện mỗi ô, nhưng cần làm tươi (refresh) liên tục để giữ dữ liệu, tiêu tốn năng lượng ngay cả khi hệ thống không hoạt động, và toàn bộ nội dung biến mất khi mất điện. Ở tầng dưới cùng, ổ cứng và SSD giữ dữ liệu bền vững với chi phí trên mỗi gigabyte rất thấp, nhưng độ trễ truy cập cao hơn DRAM từ ba đến sáu bậc độ lớn vì dữ liệu phải đi qua giao diện khối (block I/O) trên bus PCIe hoặc SATA thay vì được CPU truy cập trực tiếp bằng lệnh load/store \cite{kamath2019}.
+
+Khoảng cách hiệu năng giữa DRAM và lưu trữ thứ cấp này đã tồn tại trong nhiều thập kỷ và ngày càng trở thành nút thắt cổ chai khi khối lượng dữ liệu cần xử lý tăng nhanh hơn tốc độ cải thiện của chính DRAM và Flash. Đồng thời, việc thu nhỏ DRAM theo định luật Moore đang tiệm cận giới hạn vật lý: tụ điện trong mỗi ô càng nhỏ thì càng khó giữ đủ điện tích để phân biệt rõ trạng thái 0 và 1, còn Flash gặp vấn đề tương tự với lớp oxide tunnel mỏng dần làm tăng nhiễu xuyên kênh (cross-talk) và giảm số chu kỳ ghi/xóa chịu được \cite{meena2014}.
+
+Trước áp lực đó, giới nghiên cứu bán dẫn đã theo đuổi một nhóm công nghệ bộ nhớ phi khả biến mới gọi chung là NVM (Non-Volatile Memory), với mục tiêu kết hợp tốc độ gần với DRAM, khả năng định địa chỉ theo byte như bộ nhớ chính, và tính bền vững của lưu trữ. Trong số đó, Phase Change Memory (PCM) và Resistive RAM (ReRAM) là hai công nghệ được nghiên cứu sâu nhất và gần thương mại hóa nhất, đứng cạnh STT-RAM (Spin-Transfer Torque RAM) và FeRAM (Ferroelectric RAM). Khi một công nghệ NVM được đặt trực tiếp lên bus bộ nhớ và đạt hiệu năng đủ gần DRAM, nó được xếp vào một lớp riêng gọi là Storage-Class Memory (SCM), tầng bộ nhớ lai có tính bền vững của lưu trữ nhưng tốc độ và khả năng định địa chỉ byte gần với bộ nhớ chính \cite{kamath2019}.
+
+Báo cáo này trình bày PCM và ReRAM theo hai góc nhìn bổ sung cho nhau: cơ chế vật lý cấp ô nhớ (mục~\ref{sec:pcm} và~\ref{sec:reram-physics}), kiến trúc ứng dụng ở cấp hệ thống khi ReRAM được dùng làm bộ tăng tốc tính toán (mục~\ref{sec:reram-arch}), khái niệm SCM và các hướng nghiên cứu cải thiện nó (mục~\ref{sec:scm} và~\ref{sec:scm-research}), và cuối cùng là một trường hợp thực tế đo hiệu năng của sản phẩm SCM thương mại đầu tiên trên thị trường, Intel Optane DC Persistent Memory Module (mục~\ref{sec:optane}).
+
+% ======================================================================
+\section{Công nghệ Phase Change Memory (PCM)}
+\label{sec:pcm}
+% ======================================================================
+
+\subsection{Nguyên lý hoạt động}
+
+PCM lưu trữ thông tin bằng cách khai thác sự tương phản điện trở giữa hai pha vật lý của một hợp kim chalcogenide, phổ biến nhất là $\mathrm{Ge_2Sb_2Te_5}$ (viết tắt GST), vật liệu vốn đã được dùng trong đĩa quang ghi lại như CD-RW và DVD-RW \cite{wong2010}. Cấu trúc ô nhớ cơ bản, gọi là "mushroom cell", đặt lớp vật liệu phase change giữa điện cực trên và điện cực dưới, tiếp xúc với một "heater" tại vùng lập trình.
+
+Hai thao tác ghi dựa trên việc điều khiển nhiệt độ và tốc độ làm nguội của vùng lập trình:
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{RESET} (ghi bit có điện trở cao): một xung dòng điện lớn và ngắn nung nóng vật liệu vượt quá nhiệt độ nóng chảy rồi làm nguội cực nhanh (quench), khiến vật liệu đông cứng ở pha vô định hình (amorphous), có điện trở cao.
+    \item \textbf{SET} (ghi bit có điện trở thấp): một xung dòng điện vừa phải nhưng kéo dài hơn ủ (anneal) vật liệu ở nhiệt độ nằm giữa nhiệt độ kết tinh và nhiệt độ nóng chảy, đủ lâu để vật liệu kết tinh trở lại, đạt điện trở thấp.
+\end{itemize}
+
+Đọc dữ liệu chỉ cần một dòng điện đủ nhỏ để không làm nhiễu trạng thái đang lưu, sau đó đo điện trở để phân biệt hai pha. Tương phản điện trở giữa hai pha có thể lên tới năm bậc độ lớn về mặt vật liệu, dù trong thiết bị thực tế thường chỉ đạt khoảng hai bậc do điện trở ký sinh của cấu trúc tiếp xúc và heater \cite{wong2010}.
+
+Cơ chế cho phép SET hoạt động được gọi là \textit{threshold switching}: khi điện trường qua vùng vô định hình vượt một giá trị ngưỡng $V_{th}$ (thường trong khoảng 1 đến 2 V), điện trở của vùng này giảm đột ngột, một hiện tượng gọi là điện trở vi phân âm (negative differential resistance). Hiệu ứng này cho phép dòng điện đủ lớn chạy qua để làm nóng vật liệu tới nhiệt độ kết tinh. Cơ chế vật lý đằng sau threshold switching vẫn còn được tranh luận, với ba mô hình cạnh tranh: mô hình nhiệt (thermal runaway do hiệu ứng Joule), mô hình điện tử (sinh hạt tải mạnh dưới điện trường cao), và mô hình kết tinh (dựa trên nucleation). Nhiều khả năng cả ba cơ chế cùng đóng góp tùy vật liệu cụ thể \cite{wong2010}.
+
+\subsection{Tính chất vật liệu và giới hạn thiết kế}
+
+Một đặc tính quan trọng của vùng vô định hình là \textit{resistance drift}: điện trở của ô trôi dần theo thời gian dù không có thao tác ghi mới, tuân theo quy luật hàm mũ $R(t) = R_0 (t/t_0)^{\nu}$ với hệ số $\nu \approx 0.1$. Đây là nguyên nhân chính giới hạn khả năng lưu nhiều mức điện trở ổn định trong một ô (multi-level cell), vì các mức trung gian dễ trôi lẫn vào nhau theo thời gian \cite{wong2010}.
+
+Vật liệu phase change phải thỏa mãn đồng thời hai yêu cầu mâu thuẫn nhau: ổn định ở nhiệt độ vận hành của thiết bị (85\textdegree{}C cho ứng dụng nhúng, 150\textdegree{}C cho ô tô) nhưng kết tinh cực nhanh, ở cấp nanosecond, khi cần ghi dữ liệu. Đây là bài toán tối ưu vật liệu trung tâm của toàn bộ lĩnh vực nghiên cứu PCM. Về mặt nhiệt, điện trở biên nhiệt (Thermal Boundary Resistance, TBR) tại tiếp xúc giữa vật liệu và điện cực, thường làm từ TiN, là yếu tố quyết định dòng lập trình cần thiết \cite{wong2010}.
+
+Dòng điện RESET tỉ lệ thuận với diện tích tiếp xúc của ô, với mật độ dòng cần thiết để lập trình ổn định nằm trong khoảng 10 đến 40 $\mathrm{MA/cm^2}$. Toàn bộ lịch sử phát triển cấu trúc ô PCM, từ mushroom cell truyền thống qua edge-contact, $\mu$Trench, pore, đến ring-shaped contact và confined cell, đều theo đuổi một mục tiêu duy nhất: thu nhỏ diện tích tiếp xúc để giảm dòng RESET. Cấu trúc confined cell, nơi vùng vô định hình bị giam trong một khoang cách nhiệt, giảm được dòng RESET tới 65\% mà không cần thu nhỏ thêm diện tích tiếp xúc \cite{wong2010}.
+
+\subsection{Bộ chọn ô nhớ}
+
+Mật độ của một mảng nhớ PCM không bị giới hạn bởi kích thước ô PCM mà bởi kích thước \textit{bộ chọn ô nhớ} (memory cell selector), thiết bị đi kèm mỗi ô để cho phép truy cập chọn lọc trong mảng. Đây là nút thắt cổ chai lớn nhất cho mật độ của PCM. Các lựa chọn selector gồm MOSFET, BJT, diode (pn-junction hoặc Schottky), Metal-Insulator Transition (MIT), và Ovonic Threshold Switch (OTS), một vật liệu chalcogenide có ngưỡng chuyển mạch nhưng không lưu trạng thái lâu dài như bản thân PCM. Một selector lý tưởng cần dòng ON cao, điện trở OFF gần như vô hạn, tỉ lệ ON/OFF vượt $10^6$, mật độ dòng vượt $10^6\ \mathrm{A/cm^2}$, và tương thích với nhiệt độ chế tạo BEOL của CMOS (dưới 450\textdegree{}C) \cite{wong2010}.
+
+\subsection{Lưu nhiều bit và tích hợp 3D}
+
+Khai thác tương phản điện trở lớn giữa hai pha, PCM có thể lưu nhiều bit trên một ô (multi-level cell, MLC) bằng cách lập trình các mức điện trở trung gian. Thử nghiệm đã chứng minh tới 16 mức, tương đương 4 bit mỗi ô, trong khi chip thương mại 256 Mb đã đạt 2 bit mỗi ô. Việc này đòi hỏi thuật toán ghi lặp lại kiểu đọc - xác minh - ghi (read-verify-write) để thu hẹp phân bố điện trở của các mức \cite{wong2010}.
+
+Định hướng mật độ cao trong tương lai là kiến trúc cross-point ba chiều, nơi mỗi ô và selector chiếm một footprint $4F^2$ ($F$ là kích thước litho nhỏ nhất), được xếp chồng thành nhiều lớp chia sẻ chung mạch địa chỉ và mạch đọc. Dù vậy, tính tới thời điểm bài báo gốc được công bố, vẫn chưa có trình diễn thực tế nào về PCM xếp chồng 3D quy mô lớn, dù động lực phát triển hướng này rất rõ ràng \cite{wong2010}.
+
+\subsection{Độ tin cậy và giới hạn thu nhỏ}
+
+Hai cơ chế hỏng chính của ô PCM là \textit{stuck-open}, do hình thành lỗ rỗng (void) tại điện cực dưới, và \textit{stuck-close}, do phân tách thành phần vật liệu (elemental segregation) làm giàu antimon tại điện cực, từ đó giảm nhiệt độ kết tinh tại chỗ. Bên cạnh đó, nhiệt độ cao sinh ra khi RESET có thể làm nhiễu nhiệt (thermal disturbance) các ô lân cận, gây kết tinh một phần ngoài ý muốn. Khi công nghệ được thu nhỏ đồng dạng, nhiễu nhiệt giữ nguyên tỉ lệ tương đối so với kích thước ô, nhưng nếu khoảng cách giữa các ô bị thu hẹp nhanh hơn bản thân kích thước ô, hiện tượng này sẽ trở nên nghiêm trọng hơn \cite{wong2010}.
+
+Về khả năng thu nhỏ, vật liệu phase change vẫn giữ được tính chất chuyển pha ở kích thước nanoparticle nhỏ tới khoảng 1,8 nm, gần giới hạn hằng số mạng tinh thể. PCM đã đạt sản phẩm thương mại ở node 90 nm thay thế bộ nhớ NOR và có trình diễn công nghệ ở node 45 nm, với tiềm năng lý thuyết thu nhỏ tới 2-5 nm mà vẫn giữ hiệu ứng chuyển pha. Thách thức lớn nhất còn lại không nằm ở bản thân vật liệu phase change mà ở công nghệ selector: chưa có lựa chọn nào hiện nay thỏa mãn đồng thời tỉ lệ ON/OFF cao và dòng ON đủ lớn cho mảng nhớ mật độ cao \cite{wong2010}.
+
+% ======================================================================
+\section{Công nghệ Resistive RAM (ReRAM): cơ chế vật lý}
+\label{sec:reram-physics}
+% ======================================================================
+
+\subsection{Cấu trúc và cơ chế chuyển mạch điện trở}
+
+Khác với PCM, ReRAM dựa trên một cấu trúc đơn giản hơn nhiều: một thiết bị hai cực dạng Metal-Insulator-Metal (MIM) lưỡng ổn, gồm hai điện cực kim loại ngăn cách bởi một lớp oxide kim loại mỏng. Cơ chế chuyển mạch phổ biến nhất, gọi là \textit{filamentary-type resistive switching}, mô tả việc điện trường tạo ra các sợi dẫn điện (conducting filament) xuyên qua lớp oxide cách điện. Theo mô hình của Kamiya và cộng sự, các filament này hình thành và đứt gãy thông qua sự di chuyển và tập trung của các khuyết oxy (oxygen vacancy) trong mạng tinh thể oxide \cite{meena2014}. Khi đủ khuyết oxy tập trung thành một đường dẫn liên tục từ điện cực này sang điện cực kia, điện trở của ô giảm mạnh; khi đường dẫn đó bị đứt gãy, điện trở tăng trở lại.
+
+Tài liệu khảo sát SCM của Kamath và cộng sự mô tả cơ chế này một cách súc tích: hành vi của hệ thống phụ thuộc vào nồng độ khuyết oxy trong lớp oxide kim loại, và bằng cách áp dòng điện vào ô, trạng thái của ô có thể được chuyển đổi \cite{kamath2019}. Với một ô ReRAM lưỡng cực (bipolar), thao tác SET được thực hiện khi áp điện áp âm, còn RESET được thực hiện khi áp điện áp dương. Một ví dụ cấu trúc cụ thể là lớp titanium oxide kẹp giữa hai điện cực platinum.
+
+Vật liệu oxide phổ biến nhất được nghiên cứu cho ReRAM gồm NiO, $\mathrm{ZrO_2}$, $\mathrm{HfO_2}$, $\mathrm{SrZrO_3}$, và $\mathrm{BaTiO_3}$, hầu như bất kỳ oxide nào thể hiện trạng thái điện trở lưỡng ổn đều có thể được khai thác. Hai trạng thái điện trở được gọi theo quy ước chuẩn của ngành là LRS (Low Resistance State) và HRS (High Resistance State). Trong quá trình SET, dòng điện tăng dần từ HRS sang LRS khi điện áp tăng tới một điện áp tới hạn gọi là $V_{set}$; ngược lại trong quá trình RESET, dòng điện giảm đột ngột từ LRS về HRS tại điện áp $V_{reset}$ \cite{meena2014}.
+
+\subsection{Ưu thế cấu trúc so với PCM}
+
+Vì là một thiết bị memristor hai cực đơn giản, ReRAM có tiềm năng tạo thành cấu trúc cross-point \textit{không cần access device} (transistor hoặc diode chọn ô) đi kèm mỗi ô nhớ, một khác biệt quan trọng so với PCM vốn luôn cần một selector riêng. Khả năng này mở ra triển vọng mật độ siêu cao cho ReRAM. Tuy nhiên, việc bỏ qua selector cũng tạo ra một vấn đề kiến trúc gọi là \textit{sneak-path}: dòng điện ký sinh có thể chạy qua các đường dẫn song song ngoài ý muốn trong mảng crossbar, gây nhiễu khi đọc. Giải pháp phổ biến cho vấn đề này là cấu trúc 1T1R, kết hợp một transistor chọn ô với một điện trở lưu trữ, tương tự cấu trúc 1T1C của DRAM nhưng thay tụ điện bằng phần tử điện trở. Transistor trong cấu trúc 1T1R đóng vai trò cách ly, ngăn dòng sneak-path lan sang các ô lân cận, đổi lại mật độ thấp hơn so với cấu trúc crossbar thuần túy \cite{meena2014}.
+
+Về độ tin cậy, thời gian lưu dữ liệu (retention) của ReRAM được ngoại suy vượt 10 năm trong các thử nghiệm, còn độ bền (endurance) đo được vượt $10^6$ chu kỳ ghi ở một số cấu hình thử nghiệm tại nhiệt độ cao \cite{meena2014}.
+
+\subsection{So sánh MRAM, STT-RAM, PCM và ReRAM}
+
+Bảng~\ref{tab:pcm-sttram-reram} tổng hợp các đặc tính cấp thiết bị của bốn công nghệ NVM được nghiên cứu sâu nhất hiện nay.
+
+\begin{table}[h]
+\centering
+\caption{So sánh đặc tính thiết bị MRAM, STT-RAM, PCM và ReRAM \cite{meena2014,kamath2019}}
+\label{tab:pcm-sttram-reram}
+\begin{tabular}{lp{2.3cm}p{2.3cm}p{2.3cm}p{2.8cm}}
+\toprule
+\textbf{Đặc tính} & \textbf{MRAM} & \textbf{STT-RAM} & \textbf{PCM} & \textbf{ReRAM} \\
+\midrule
+Cell size ($F^2$) & 20--40 & 6--20 & 8 & 4--10 \\
+Cơ chế lưu trữ & Từ hóa cố định & Mô-men từ (dòng spin) & Pha vô định hình/tinh thể & Filament oxygen vacancy \\
+Read time (ns) & 20--80 & 2--20 & 20--50 & 10 \\
+Write/erase time (ns) & 50/50 & 2--20 & 50/50 & 50/50 \\
+Endurance & $10^{12}$ & $> 10^{16}$ & $10^{12}$ & $10^{11}$ \\
+Write power & Mid & Low & Low & Low \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Trong bốn công nghệ, ReRAM có cell size nhỏ nhất (4--10 $F^2$, nhỏ hơn cả PCM) và cấu trúc MIM đơn giản hơn đáng kể so với MRAM và STT-RAM vốn cần nhiều lớp từ tính phức tạp. Đây là lý do chính khiến ReRAM được xem là ứng viên khả thi cho cả lưu trữ mật độ cao lẫn tính toán trong bộ nhớ, nội dung sẽ được trình bày ở mục~\ref{sec:reram-arch}.
+
+% ======================================================================
+\section{Kiến trúc ứng dụng ReRAM trong tính toán}
+\label{sec:reram-arch}
+% ======================================================================
+
+Bên cạnh vai trò làm phần tử lưu trữ, cấu trúc mảng crossbar của ReRAM còn cho phép thực hiện tính toán ngay bên trong bộ nhớ, một hướng nghiên cứu kiến trúc riêng biệt được khảo sát chi tiết bởi Mittal \cite{mittal2019}. Phần này trình bày ReRAM không còn ở góc độ thiết bị vật lý mà ở góc độ kiến trúc máy tính: cách một mảng ReRAM được tổ chức để tăng tốc các phép toán, đặc biệt là mạng nơ-ron.
+
+\subsection{Nguyên lý Memristor Crossbar Array}
+
+Một mảng ReRAM được tổ chức theo lưới hàng-cột, gọi là Memristor Crossbar Array (MCA), trong đó mỗi ô lưu một giá trị điện trở $R$, tương đương độ dẫn $G = 1/R$. Khi đặt điện áp $V_i$ vào hàng $i$, dòng điện thu được là $I_i = V_i \times G_i$ theo định luật Ohm. Tổng dòng điện thu được tại một cột, theo định luật Kirchhoff, chính là tích vô hướng (dot-product) giữa vector điện áp đầu vào và vector độ dẫn của cột đó. Cơ chế này cho phép thực hiện phép nhân ma trận-vector (matrix-vector multiplication, MVM) ở dạng tương tự (analog), song song hoàn toàn, trong một bước thời gian duy nhất \cite{mittal2019}.
+
+Phép nhân ma trận-vector là phép toán cốt lõi chiếm phần lớn chi phí tính toán của các lớp fully-connected và convolution trong mạng nơ-ron nhân tạo (ANN), nên khả năng thực hiện trực tiếp phép toán này trong phần cứng bộ nhớ khiến ReRAM crossbar trở thành nền tảng tự nhiên cho các bộ tăng tốc Processing-In-Memory (PIM) và mạng nơ-ron.
+
+\subsection{Kiến trúc tăng tốc mạng nơ-ron}
+
+Vì conductance của ReRAM luôn dương, các kiến trúc thực tế thường dùng hai MCA riêng biệt để biểu diễn trọng số dương và âm, đồng thời chia nhỏ ma trận trọng số lớn thành nhiều crossbar nhỏ hơn (thiết kế "tiled") để khả thi về diện tích và độ chính xác \cite{mittal2019}.
+
+Trong số các kiến trúc inference tiêu biểu, ISAAC của Shafiee và cộng sự tổ chức nhiều "tile" chứa MCA, mã hóa trọng số 16-bit qua 16 mức điện áp liên tiếp và chia sẻ bộ chuyển đổi tương tự-số (ADC) giữa nhiều MCA để giảm chi phí phần cứng. Đối với huấn luyện, PipeLayer của Song và cộng sự dùng các MCA "morphable", có thể chuyển đổi vai trò động, để thực hiện pipeline lan truyền tiến và lan truyền lùi (forward/backward propagation) ngay trên phần cứng.
+
+Một hướng khác là thiết kế kiến trúc tái cấu hình, tiêu biểu là FPCA của Zidan và cộng sự, nơi lõi tính toán có thể chuyển đổi động giữa ba vai trò: lưu trữ thuần túy, tính toán tương tự, hoặc tính toán số. Bên cạnh đó, thuật toán SCIC của Ankit và cộng sự đề xuất kỹ thuật cắt tỉa mạng nơ-ron (pruning) theo cấu trúc khối phù hợp với kích thước crossbar, thay vì cắt tỉa từng trọng số rời rạc như cách làm truyền thống \cite{mittal2019}.
+
+\subsection{Chi phí ADC/DAC: nút thắt cổ chai lớn nhất}
+
+Một trong những phát hiện quan trọng nhất của khảo sát kiến trúc ReRAM là chi phí của các bộ chuyển đổi tương tự-số (ADC) và số-tương tự (DAC) tại biên crossbar. Vì tính toán bên trong crossbar diễn ra ở miền tương tự nhưng phần còn lại của hệ thống số hóa, mọi kết quả MVM phải đi qua ADC trước khi xử lý tiếp. Mittal ghi nhận rằng ADC và DAC chiếm tới 85 đến 98\% diện tích và năng lượng của một hệ thống tính toán dạng neuromorphic dùng ReRAM, vượt xa chi phí của bản thân mảng crossbar \cite{mittal2019}. Nhiều công trình tìm cách giảm độ phân giải ADC cần thiết hoặc thay ADC bằng các comparator tương tự đơn giản hơn. Một hướng cực đoan hơn, được Ni và cộng sự đề xuất, là thiết kế crossbar hoàn toàn số, chỉ dùng hai trạng thái nhị phân ON/OFF thay vì nhiều mức trung gian, vì tỉ lệ lỗi ở các trạng thái trung gian được quan sát là cao hơn đáng kể so với hai trạng thái biên.
+
+\subsection{Cải thiện độ tin cậy}
+
+Hai vấn đề độ tin cậy nổi bật khi triển khai ReRAM ở quy mô lớn cho tính toán là lỗi cứng (hard fault) và trôi điện trở (resistance drift), cả hai đều bắt nguồn từ cơ chế vật lý đã trình bày ở mục~\ref{sec:reram-physics}. Lỗi cứng, còn gọi là stuck-at-0/1 (SA0/SA1), xảy ra khi một ô bị kẹt vĩnh viễn ở mức conductance cao hoặc thấp, thường do đạt giới hạn độ bền ghi. Chen và cộng sự đề xuất huấn luyện nhận biết lỗi (fault-aware training) dựa trên thuật toán ghép cặp song phân (weighted bipartite matching) để tránh ánh xạ các trọng số quan trọng vào những ô có biến thiên cao. Xia và cộng sự phát hiện lỗi theo chu kỳ và dùng thuật toán di truyền để ánh xạ lại trọng số có giá trị 0 vào đúng những ô đã bị lỗi SA0, tận dụng lỗi thay vì né tránh hoàn toàn \cite{mittal2019}.
+
+Đối với trôi điện trở, một vấn đề bắt nguồn trực tiếp từ cơ chế filament đã mô tả ở mục~\ref{sec:reram-physics}, Li và cộng sự ghi nhận rằng một điện áp nhỏ 0,1 V có thể gây lệch 2\% so với giá trị lập trình ban đầu chỉ sau một giây. Giải pháp đề xuất là hiệu chỉnh nội tuyến (inline calibration) dùng nội suy đa thức để dự đoán sai số theo thời gian và quyết định thời điểm cần hiệu chỉnh lại, tránh chi phí hiệu chỉnh liên tục \cite{mittal2019}.
+
+\subsection{Các ứng dụng Processing-In-Memory khác}
+
+Ngoài mạng nơ-ron, cấu trúc crossbar ReRAM còn được khai thác cho nhiều lớp bài toán khác:
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Phép toán số học và logic:} kỹ thuật Pinatubo của Li và cộng sự thực hiện các phép AND, OR, XOR ngay trong mảng bằng cách kích hoạt đồng thời nhiều hàng và so sánh điện trở tổng hợp với một điện trở tham chiếu có thể thay đổi.
+    \item \textbf{Tìm kiếm dữ liệu (CAM):} tận dụng đặc tính tương tự của ReRAM để thực hiện tìm kiếm gần đúng (nearest-neighbor search), đo qua tốc độ phóng điện của bitline tỉ lệ với số bit không khớp.
+    \item \textbf{Xử lý đồ thị:} GraphR của Song và cộng sự lưu đồ thị dạng nén thưa và thực hiện trực tiếp phép nhân ma trận-vector cho các thuật toán đồ thị như PageRank ngay trong ReRAM, với quan sát rằng giảm kích thước crossbar làm tăng tỉ lệ sử dụng ô hiệu quả từ khoảng 39\% (lưới $8\times8$) lên khoảng 78\% (lưới $2\times2$) do bản chất thưa của ma trận kề.
+    \item \textbf{Tính toán xấp xỉ:} các kỹ thuật như bit-trimming và memristance-scaling đánh đổi độ chính xác lấy hiệu năng và năng lượng, phù hợp với các ứng dụng học máy và xử lý đồ thị vốn có khả năng chịu lỗi tốt \cite{mittal2019}.
+\end{itemize}
+
+\subsection{Mạng nơ-ron xung (SNN)}
+
+Một hướng nghiên cứu còn ít phát triển hơn so với ANN là dùng ReRAM cho mạng nơ-ron xung (Spiking Neural Network, SNN). Kiến trúc RESPARC của Ankit và cộng sự tổ chức lõi tái cấu hình gồm nhiều "neurocell" chứa các "macro processing engine" liên kết bằng MCA. Vì SNN mã hóa thông tin theo thời điểm xung (temporal/spike coding) thay vì biên độ liên tục, kiến trúc này không cần ADC/DAC và vận hành ở điện áp thấp hơn ANN đáng kể, khoảng 0,1 V so với 0,9 V, nên tiết kiệm năng lượng hơn dù số lượng nghiên cứu trong hướng này còn ít hơn nhiều so với ANN \cite{mittal2019}.
+
+\subsection{Thách thức tổng hợp}
+
+Mittal tổng kết bảy nhóm thách thức chính cho kiến trúc ReRAM ở quy mô lớn: chi phí ADC/DAC chiếm phần lớn diện tích và năng lượng hệ thống; sneak-path trong crossbar không có selector; biến thiên trong quá trình chế tạo (process variation); lỗi cứng và trôi điện trở; năng lượng và độ trễ ghi cao hơn SRAM, đặc biệt nghiêm trọng khi huấn luyện cần cập nhật trọng số liên tục; một số lớp mạng nơ-ron như Local Response Normalization không ánh xạ được lên crossbar; và cuối cùng là sự thiếu vắng công cụ mô phỏng mở cùng prototype phần cứng quy mô lớn để kiểm chứng các kết quả nghiên cứu \cite{mittal2019}.
+
+% ======================================================================
+\section{Khái niệm Storage-Class Memory (SCM)}
+\label{sec:scm}
+% ======================================================================
+
+\subsection{Định nghĩa và động lực}
+
+Storage-Class Memory được định nghĩa là một tập con của NVM, vừa giữ được tính bền vững như bộ nhớ thứ cấp, vừa đạt hiệu năng tương đương hoặc tốt hơn bộ nhớ chính, cùng khả năng định địa chỉ theo byte (byte-addressability) thay vì khối như ổ đĩa \cite{kamath2019}. Ba công nghệ được xem là ứng viên SCM chính hiện nay là PCM, STT-RAM, và ReRAM, đúng hai công nghệ đã trình bày chi tiết ở mục~\ref{sec:pcm} và~\ref{sec:reram-physics}.
+
+Động lực ra đời SCM xuất phát từ giới hạn của cả hai đầu phân cấp bộ nhớ hiện tại: SRAM dùng cho cache có mật độ thấp, ngày càng khó thu nhỏ để đáp ứng nhu cầu tốc độ tăng liên tục; DRAM dùng cho bộ nhớ chính có mật độ cao hơn nhưng cần làm tươi liên tục, tiêu tốn năng lượng ngay cả khi không hoạt động \cite{kamath2019}.
+
+Ba công nghệ SCM chia sẻ một số ưu điểm chung: công suất rò rỉ thấp do không cần refresh liên tục như DRAM; mật độ đóng gói cao hơn, với cell size của STT-RAM và ReRAM chỉ bằng khoảng một phần mười so với SRAM; và khả năng hoạt động như Multi-Level Cell nhờ đặc tính điện trở có thể chia thành nhiều mức trung gian. Đổi lại, cả ba cùng chia sẻ một số nhược điểm nghiêm trọng: độ trễ ghi cao, với PCM cao gấp khoảng mười lần DRAM và STT-RAM tiêu tốn năng lượng ghi gấp khoảng mười lần SRAM; và giới hạn độ bền ghi trước khi xảy ra lỗi cứng (hard error), một dạng lỗi vĩnh viễn khác hẳn lỗi mềm (soft error) vốn có thể sửa được bằng mã sửa lỗi (ECC) thông thường \cite{kamath2019}.
+
+\subsection{So sánh định lượng với các tầng bộ nhớ khác}
+
+Bảng~\ref{tab:scm-comparison} tổng hợp số liệu định lượng so sánh trực tiếp ba công nghệ SCM với HDD, Flash, và DRAM, là bộ số liệu cô đọng nhất cho thấy vị trí của SCM trong phân cấp bộ nhớ.
+
+\begin{table}[h]
+\centering
+\caption{So sánh đặc tính thiết bị các công nghệ bộ nhớ \cite{kamath2019}}
+\label{tab:scm-comparison}
+\begin{tabular}{lcccccc}
+\toprule
+& \textbf{Cell size} & \textbf{Access} & \textbf{Read} & \textbf{Write} & \textbf{Endurance} & \textbf{Standby} \\
+& \textbf{($F^2$)} & \textbf{Granularity} & \textbf{Latency} & \textbf{Latency} & & \textbf{Power} \\
+\midrule
+HDD & N/A & 512 B & 5 ms & 5 ms & $\geq 10^{15}$ & 1 W \\
+SLC Flash & 4--6 & 4 KB & 25 $\mu$s & 500 $\mu$s & $10^4$--$10^5$ & 0 \\
+DRAM & 6--10 & 64 B & 50 ns & 50 ns & $\geq 10^{15}$ & Refresh \\
+\textbf{PCM} & 4--12 & 64 B & 50 ns & 500 ns & $10^8$--$10^9$ & 0 \\
+\textbf{STT-RAM} & 6--50 & 64 B & 10 ns & 10 ns & $\geq 10^{16}$ & 0 \\
+\textbf{ReRAM} & 4--10 & 64 B & 10 ns & 50 ns & $10^{11}$ & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Bảng~\ref{tab:scm-comparison} cho thấy rõ vị trí trung gian của SCM: đơn vị truy cập 64 B giống DRAM, khác hẳn 4 KB của Flash hay 512 B của HDD; độ trễ đọc ở cấp chục nanosecond, gần với DRAM hơn nhiều so với Flash; nhưng độ trễ ghi của PCM cao gấp mười lần đọc, và độ bền của cả ba công nghệ đều thấp hơn DRAM nhiều bậc, từ ba bậc (STT-RAM) đến bảy bậc (PCM) độ lớn.
+
+% ======================================================================
+\section{Các hướng nghiên cứu cải thiện SCM}
+\label{sec:scm-research}
+% ======================================================================
+
+Vì độ bền ghi giới hạn và độ trễ ghi cao là hai nhược điểm cốt lõi chung của cả PCM, STT-RAM, và ReRAM, phần lớn nghiên cứu kiến trúc về SCM tập trung khắc phục hai vấn đề này, bên cạnh hai hướng phụ là sửa lỗi và lưu nhiều bit mỗi ô \cite{kamath2019}.
+
+\subsection{Kéo dài tuổi thọ: wear-leveling và wear-limiting}
+
+Wear-leveling là nhóm kỹ thuật phân bố đều thao tác ghi trên toàn bộ ô nhớ, tránh tình trạng một số ô bị ghi quá nhiều lần trong khi các ô khác gần như không được dùng tới. Với cache dùng SCM, có hai dạng wear-leveling: \textit{intra-set}, phân bố đều ghi trong một tập (set) của cache, và \textit{inter-set}, tránh để một set nhận nhiều ghi hơn các set khác. Hai cơ chế này có thể hoạt động độc lập và cùng tồn tại trong cùng một cache.
+
+Wear-limiting, ngược lại, nhắm tới giảm tổng số lần ghi cần thực hiện. Kỹ thuật Data Comparison Write đọc giá trị hiện tại của ô trước, chỉ ghi khi giá trị mới khác giá trị cũ. Flip-N-Write mở rộng ý tưởng này bằng cách thêm một bit phụ mỗi khối: nếu số bit cần đổi của một thao tác ghi lớn hơn một nửa kích thước khối, dữ liệu được đảo bit trước khi ghi và bit phụ được set, đảm bảo số bit cần ghi không bao giờ vượt quá một nửa kích thước khối \cite{kamath2019}.
+
+\subsection{Sửa lỗi}
+
+Mã sửa lỗi (ECC) truyền thống dùng cho DRAM và SRAM có chi phí bộ nhớ phụ quá cao để áp dụng trực tiếp cho SCM, buộc giới nghiên cứu phát triển các phương án thay thế. Error-Correcting Pointers (ECP) dùng một con trỏ trỏ tới ô bị lỗi kèm giá trị đúng tương ứng, ví dụ cung cấp 6 ECP cho mỗi khối 512-bit, cho phép khối đó chịu được tối đa 6 lỗi cứng. Error-Correcting Strings (ECS) mở rộng ý tưởng bằng offset có độ dài biến đổi thay vì con trỏ cố định, cho phép dung sai lỗi lớn hơn trước khi khối thất bại hoàn toàn \cite{kamath2019}.
+
+\subsection{Hiệu năng và song song hóa}
+
+Nhiều kỹ thuật khai thác tính bất đối xứng giữa SET và RESET của PCM, nơi RESET cần dòng cao hơn nhưng thời gian ngắn hơn SET. PreSET của Qureshi và cộng sự chủ động SET trước toàn bộ một cache line ngay khi nó được đánh dấu "dirty", để khi thao tác writeback thực sự xảy ra, chỉ cần thực hiện RESET vốn nhanh hơn cho các bit cần đổi. Two-Stage-Write chia một thao tác ghi thành hai giai đoạn: giai đoạn đầu ghi nhanh các bit 0, giai đoạn sau ghi song song các bit 1 trong giới hạn công suất cho phép. MaxPB ước lượng yêu cầu công suất của từng thao tác ghi rồi đóng gói nhiều thao tác lại để thực hiện song song, tối thiểu hóa tổng số lần ghi cần thiết trong giới hạn ngân sách công suất \cite{kamath2019}.
+
+\subsection{Multi-Level Cell}
+
+Việc lưu nhiều bit mỗi ô đòi hỏi nhiều lần lặp Program-and-Verify (P\&V): ghi, đọc lại, kiểm tra điện trở có nằm trong khoảng mong muốn hay chưa, rồi ghi tiếp nếu cần. Khái niệm \textit{guardband}, một khoảng đệm giữa các mức điện trở liền kề, được dùng để chống lại hiện tượng trôi điện trở đã mô tả ở mục~\ref{sec:reram-physics}: guardband lớn hơn cho phép dữ liệu giữ được lâu hơn trước khi trôi vượt ra ngoài mức đã lập trình, nhưng đổi lại cần nhiều vòng lặp P\&V hơn, làm tăng độ trễ và năng lượng ghi. Đây là một đánh đổi trực tiếp giữa độ bền dữ liệu (retention) và chi phí ghi \cite{kamath2019}.
+
+\subsection{Bộ tăng tốc tính toán trong bộ nhớ}
+
+Cả ba công nghệ PCM, STT-RAM, và ReRAM đều có khả năng thực hiện tính toán ngoài chức năng lưu trữ thuần túy. Đặc biệt, ReRAM với cấu trúc crossbar array có lợi thế tự nhiên cho phép nhân ma trận-vector ngay trong bộ nhớ, đúng nguyên lý đã trình bày chi tiết ở mục~\ref{sec:reram-arch}. Đáng chú ý, khảo sát SCM của Kamath và cộng sự dẫn trực tiếp khảo sát kiến trúc ReRAM của Mittal làm nguồn tham khảo chính cho phần bộ tăng tốc, cùng các công trình cụ thể như PRIME và ISAAC vốn cũng được phân tích chi tiết trong cùng khảo sát đó \cite{kamath2019, mittal2019}. Sự trích dẫn chéo này cho thấy hai hướng nghiên cứu, thiết bị/hệ thống SCM và kiến trúc tính toán ReRAM, dù xuất phát từ hai cộng đồng nghiên cứu khác nhau, đang hội tụ về cùng một nền tảng phần cứng.
+
+\subsection{Công cụ mô phỏng}
+
+Ba công cụ mô phỏng phổ biến nhất cho nghiên cứu SCM là GEM5, một simulator kiến trúc máy tính tổng quát; NVSim, một công cụ mức mạch ước lượng hiệu năng, năng lượng, và diện tích cho các thiết kế PCM, STT-RAM, ReRAM, và Flash; và NVMain, một simulator bộ nhớ chính chu kỳ-chính xác hỗ trợ DRAM, PCM, STT-RAM, ReRAM cùng các hệ lai, có thể tích hợp với GEM5 để mô phỏng toàn hệ thống \cite{kamath2019}.
+
+% ======================================================================
+\section{Trường hợp nghiên cứu thực tế: Intel Optane DC Persistent Memory Module}
+\label{sec:optane}
+% ======================================================================
+
+Phần trên trình bày SCM từ góc độ lý thuyết và mô phỏng. Phần này đối chiếu với một trường hợp thực tế: kết quả đo hiệu năng của Izraelevitz và cộng sự tại Non-Volatile Systems Laboratory, UC San Diego, trên Intel Optane DC Persistent Memory Module (DCPMM), sản phẩm SCM thương mại quy mô lớn đầu tiên trên thị trường, dựa trên công nghệ 3D XPoint, một công nghệ có quan hệ gần gũi với PCM \cite{izraelevitz2019}. Trước khi sản phẩm này ra mắt, nghiên cứu về persistent memory chỉ có thể dựa trên giả lập, dùng DRAM giả định là bền vững, mô phỏng phần cứng, hoặc khai thác độ trễ NUMA để xấp xỉ hành vi của NVM thật. Nhóm tác giả có quyền truy cập máy thử nghiệm thực tế và thực hiện khoảng 330 giờ đo đạc, tạo ra một trong những nghiên cứu học thuật độc lập đầu tiên kiểm chứng các giả định đó.
+
+\subsection{Kiến trúc tích hợp vào hệ thống}
+
+Optane DC PMM gắn trực tiếp lên khe DIMM, kết nối với bộ điều khiển bộ nhớ tích hợp (iMC) trên CPU qua giao thức DDR-T, tương thích cơ điện với DDR4 nhưng cho phép độ trễ biến đổi thay vì độ trễ cố định như DDR4 thông thường. Tính bền vững dữ liệu được đảm bảo nhờ một vùng gọi là ADR domain (Asynchronous DRAM Refresh): một khi dữ liệu store tới được iMC, nó được coi là an toàn nhờ pin hoặc tụ dự phòng đảm bảo flush hoàn tất trong dưới 100 $\mu$s khi mất điện. Vùng ADR không bao gồm cache của CPU \cite{izraelevitz2019}.
+
+Thiết bị có hai chế độ vận hành. \textbf{Memory Mode} (cached) dùng Optane để mở rộng dung lượng RAM, với DRAM liền kề đóng vai trò cache write-back hoàn toàn trong suốt với hệ điều hành, nhưng đánh đổi lại là mất tính bền vững, vì toàn bộ vùng nhớ này trở thành volatile. \textbf{App Direct Mode} (uncached) lộ Optane trực tiếp làm thiết bị lưu trữ bền vững, không có DRAM cache; ứng dụng và hệ điều hành phải chủ động dùng lệnh load/store kèm các lệnh đảm bảo thứ tự như \texttt{sfence} và \texttt{clwb} để đảm bảo tính nhất quán khi xảy ra crash.
+
+CPU truy cập Optane qua lệnh load/store ở cấp cache line, 64 byte, giống hệt cách truy cập DRAM, khác hẳn SSD và Flash truyền thống vốn truy cập qua giao diện khối trên PCIe hoặc SATA. Tuy vậy, granularity vật lý thực sự bên trong Optane là 256 byte: bộ điều khiển on-DIMM dịch các truy cập 64 byte của CPU thành các truy cập 256 byte bên trong, gây hiện tượng write amplification mỗi khi ghi nhỏ hơn 256 byte \cite{izraelevitz2019}.
+
+\subsection{Kết quả đo độ trễ và băng thông}
+
+Nhóm tác giả dùng Intel Memory Latency Checker và một công cụ tự xây gọi là LATTester để đo độ trễ và băng thông trên một nền tảng dual-socket Xeon Cascade Lake với 384 GB DRAM và 3 TB Optane DC PMM. Bảng~\ref{tab:optane-results} tóm tắt các kết quả chính, so sánh với DRAM trên cùng hệ thống.
+
+\begin{table}[h]
+\centering
+\caption{Kết quả đo hiệu năng Optane DC PMM so với DRAM \cite{izraelevitz2019}}
+\label{tab:optane-results}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Chỉ số} & \textbf{Optane DC PMM} & \textbf{DRAM} \\
+\midrule
+Latency đọc ngẫu nhiên & 305 ns & 81 ns \\
+Latency đọc tuần tự & 169 ns & -- \\
+Latency ghi (tới ADR domain) & 94 ns & 86 ns \\
+Băng thông đọc tối đa (6 DIMM) & 39,4 GB/s & $>$100 GB/s \\
+Băng thông ghi tối đa (6 DIMM) & 13,9 GB/s & -- \\
+Băng thông đọc tuần tự (1 DIMM) & 6,6 GB/s & -- \\
+Băng thông ghi tuần tự (1 DIMM) & 2,3 GB/s & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Latency đọc ngẫu nhiên của Optane cao gấp khoảng ba lần DRAM, nhưng latency đọc tuần tự chỉ cao gấp khoảng hai lần, nhờ cơ chế buffering và prefetch bên trong DIMM gộp các truy cập liền kề. Đáng chú ý, latency ghi của Optane gần như tương đương DRAM, vì thao tác store chỉ cần đến iMC để được coi là an toàn, được ẩn hoàn toàn trong ADR domain. Ở chiều băng thông, tỉ lệ đọc/ghi của Optane đạt khoảng 2,9 lần khi đo trên một DIMM tuần tự, so với chỉ khoảng 1,3 lần của DRAM, một sự bất đối xứng đọc/ghi rõ rệt là đặc trưng kiến trúc cốt lõi của thiết bị này \cite{izraelevitz2019}.
+
+Granularity 256 byte được xác nhận trực tiếp qua thực nghiệm: băng thông tăng nhanh theo kích thước truy cập cho tới đúng ngưỡng 256 byte rồi chững lại, và các truy cập nhỏ hơn ngưỡng này lãng phí băng thông đồng thời gây write amplification. Về khả năng mở rộng theo số luồng, băng thông đọc scale tốt theo số thread, đạt đỉnh ở 17 thread trên hệ 6 DIMM, nhưng băng thông ghi không scale tương tự, đã bão hòa chỉ với 4 thread. Workload trộn đọc và ghi chịu ảnh hưởng nặng hơn nhiều so với DRAM, với khoảng cách hiệu năng có lúc lên tới 12 lần so với baseline DRAM, so với chỉ khoảng 2,9 đến 5,7 lần khi đọc hoặc ghi thuần \cite{izraelevitz2019}.
+
+\subsection{Phát hiện quan trọng nhất: giả lập so với đo thực}
+
+Phát hiện có ý nghĩa phương pháp luận lớn nhất của nghiên cứu là việc giả lập NVMM bằng DRAM trong các công trình trước năm 2019, dù là DRAM cục bộ hay DRAM ở node NUMA xa để mô phỏng độ trễ, đều quá lạc quan so với hành vi thực đo trên Optane thật. Ứng dụng chạy trên phần cứng Optane thật luôn chậm hơn đáng kể so với khi chạy trên cấu hình giả lập tương ứng, và khoảng cách này càng lớn khi hệ thống file đang dùng càng nhanh. Đây là một cảnh báo quan trọng cho toàn bộ tài liệu nghiên cứu persistent memory được công bố trước khi phần cứng thật xuất hiện trên thị trường \cite{izraelevitz2019}.
+
+Một phát hiện thực tiễn khác là hệ thống file chuyên dụng cho NVMM, cụ thể là NOVA và NOVA-Relaxed, vượt trội rõ rệt so với các hệ thống file truyền thống được thích nghi cho NVMM như Ext4-DAX hay XFS-DAX, trung bình nhanh hơn khoảng 1,43 lần trên bộ benchmark Filebench. Nguyên tắc thiết kế cốt lõi rút ra từ toàn bộ nghiên cứu là hiệu năng cải thiện khi Optane được tích hợp càng sâu vào storage stack: DIMM cho hiệu năng tốt hơn SSD dùng cùng công nghệ Optane qua giao diện NVMe; và việc ứng dụng tự quản lý tính bền vững ở user-space, qua thư viện như PMDK/libpmemobj, bỏ qua cả kernel lẫn hệ thống file, cho hiệu năng tốt hơn cả các hệ thống file chuyên dụng tối ưu nhất. Ví dụ cụ thể, phiên bản RocksDB viết lại để dùng trực tiếp persistent memory nhanh hơn khoảng 3,5 lần so với phiên bản chạy qua hệ thống file trên NOVA-Relaxed \cite{izraelevitz2019}.
+
+Cuối cùng, một số ứng dụng như MySQL và MongoDB gần như miễn nhiễm với loại bộ nhớ bên dưới, vì có buffer pool và cơ chế checkpointing riêng, hoặc vì chi phí giao tiếp client-server đã lớn hơn nhiều so với chênh lệch latency giữa DRAM và Optane. Bài học rút ra là lợi ích của SCM phụ thuộc rất nhiều vào kiến trúc phần mềm tầng trên, không tự động đến chỉ nhờ phần cứng nhanh hơn \cite{izraelevitz2019}.
+
+% ======================================================================
+\section{So sánh tổng hợp}
+\label{sec:summary}
+% ======================================================================
+
+Bảng~\ref{tab:final-comparison} tổng hợp vai trò của từng công nghệ và mối liên hệ với năm tài liệu tham khảo dùng trong báo cáo này.
+
+\begin{table}[h]
+\centering
+\caption{Tổng hợp vai trò các công nghệ bộ nhớ trong báo cáo}
+\label{tab:final-comparison}
+\small
+\begin{tabular}{p{2.4cm}p{2.6cm}p{2.6cm}p{2.6cm}p{3.4cm}}
+\toprule
+\textbf{Đặc tính} & \textbf{DRAM} & \textbf{PCM} & \textbf{ReRAM} & \textbf{Optane / SCM} \\
+\midrule
+Cơ chế lưu trữ & Điện tích tụ điện & Pha vật liệu chalcogenide & Filament dẫn điện qua oxygen vacancy & 3D XPoint, họ hàng PCM \\
+Phi khả biến & Không & Có & Có & Có \\
+Cần selector & Không (1T1C) & Có, bắt buộc & Tùy chọn (1T1R hoặc crossbar thuần) & Có (sản phẩm thực tế) \\
+Vai trò chính & Bộ nhớ chính truyền thống & Công nghệ ô nhớ phi khả biến nền tảng & Lưu trữ và tính toán trong bộ nhớ & Minh chứng SCM thương mại \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+So sánh số liệu lý thuyết ở Bảng~\ref{tab:scm-comparison} với số liệu đo thực ở Bảng~\ref{tab:optane-results} cho thấy một khoảng cách đáng chú ý: latency đọc lý thuyết của PCM và ReRAM trong các nghiên cứu thiết bị nằm trong khoảng 10 đến 50 ns, trong khi Optane, một sản phẩm dựa trên công nghệ họ PCM đã được thương mại hóa, đo được latency đọc ngẫu nhiên thực tế lên tới 305 ns. Khoảng cách này phản ánh chi phí của toàn bộ lớp kiến trúc bao quanh ô nhớ vật lý: bộ điều khiển on-DIMM, giao thức DDR-T, granularity 256 byte, và các cơ chế wear-leveling/address indirection vận hành ngầm, những yếu tố không xuất hiện trong các con số đo ở cấp thiết bị đơn lẻ trong phòng thí nghiệm.
+
+% ======================================================================
+\section{Kết luận và xu hướng tương lai}
+% ======================================================================
+
+Báo cáo đã trình bày PCM và ReRAM theo ba lớp nội dung bổ sung cho nhau: cơ chế vật lý cấp ô nhớ, nơi PCM dựa trên tương phản pha vật liệu còn ReRAM dựa trên hình thành và đứt gãy filament qua khuyết oxy; kiến trúc ứng dụng cấp hệ thống, nơi cấu trúc crossbar của ReRAM được khai thác cho tính toán trong bộ nhớ, đặc biệt là tăng tốc mạng nơ-ron; và khái niệm Storage-Class Memory, tầng bộ nhớ lai kết hợp tính bền vững của lưu trữ với tốc độ gần DRAM, được minh chứng bằng dữ liệu đo thực tế trên Intel Optane.
+
+Hai chủ đề lặp lại xuyên suốt cả năm tài liệu tham khảo đáng được nhấn mạnh trong phần kết luận. Thứ nhất, không công nghệ NVM đơn lẻ nào hiện thỏa mãn đồng thời ba yêu cầu của một "bộ nhớ thống nhất": tốc độ cao như SRAM, mật độ cao như Flash, và phi khả biến hoàn toàn; mỗi công nghệ đánh đổi các thuộc tính này theo cách khác nhau. Thứ hai, xu hướng nghiên cứu hiện tại đang dịch chuyển từ việc thay thế hoàn toàn DRAM hoặc Flash bằng một công nghệ NVM duy nhất sang xây dựng các hệ bộ nhớ lai (hybrid memory), kết hợp SCM với DRAM hoặc SRAM để bù đắp nhược điểm lẫn nhau, đúng tinh thần của Memory Mode trên Optane.
+
+Khảo sát SCM của Kamath và cộng sự nhắc trực tiếp đến công nghệ 3D XPoint, nền tảng của chính sản phẩm Optane được phân tích ở mục~\ref{sec:optane}, với tuyên bố từ Intel rằng công nghệ này nhanh hơn SSD NAND tới một nghìn lần và có độ bền cao hơn một nghìn lần \cite{kamath2019}. Dù những con số đo thực tế trong mục~\ref{sec:optane} cho thấy bức tranh khiêm tốn hơn nhiều so với tuyên bố tiếp thị ban đầu, hướng đi chung là rõ ràng: NVM đang biến đổi phân cấp bộ nhớ từ một tập hợp các tầng rời rạc, mỗi tầng phục vụ một vai trò cố định, thành một phổ liên tục các lựa chọn về tốc độ, mật độ, và chi phí, nơi kiến trúc sư hệ thống có thể phối hợp nhiều công nghệ bộ nhớ tùy theo đặc điểm khối lượng công việc cụ thể.
+
+% ======================================================================
+\renewcommand{\refname}{Tài liệu tham khảo}
+\addcontentsline{toc}{section}{Tài liệu tham khảo}
+% ======================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{wong2010}
+H.-S. P. Wong, S. Raoux, S. Kim, J. Liang, J. P. Reifenberg, B. Rajendran, M. Asheghi, K. E. Goodson.
+\textit{Phase Change Memory}.
+Proceedings of the IEEE, vol. 98, no. 12, pp. 2201--2227, December 2010.
+
+\bibitem{mittal2019}
+S. Mittal.
+\textit{A Survey of ReRAM-Based Architectures for Processing-In-Memory and Neural Networks}.
+Machine Learning and Knowledge Extraction, vol. 1, no. 1, pp. 75--114, 2019.
+DOI: 10.3390/make1010005.
+
+\bibitem{izraelevitz2019}
+J. Izraelevitz, J. Yang, L. Zhang, J. Kim, X. Liu, A. Memaripour, Y. J. Soh, Z. Wang, Y. Xu, S. R. Dulloor, J. Zhao, S. Swanson.
+\textit{Basic Performance Measurements of the Intel Optane DC Persistent Memory Module}.
+Non-Volatile Systems Laboratory, University of California, San Diego, 2019.
+arXiv:1903.05714v3 [cs.DC].
+
+\bibitem{meena2014}
+J. S. Meena, S. M. Sze, U. Chand, T.-Y. Tseng.
+\textit{Overview of Emerging Nonvolatile Memory Technologies}.
+Nanoscale Research Letters, vol. 9, article 526, 2014.
+DOI: 10.1186/1556-276X-9-526.
+
+\bibitem{kamath2019}
+A. K. Kamath, L. Monis, A. T. Karthik, B. Talawar.
+\textit{A Survey of Storage Class Memory: Principles, Problems, and Possibilities}.
+National Institute of Technology Karnataka, 2019.
+arXiv:1909.12221v1 [cs.AR].
+
+\end{thebibliography}
+
+\end{document}
